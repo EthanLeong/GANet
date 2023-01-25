@@ -19,8 +19,7 @@ class once2dDataset(TuSimpleDataset):
     def __init__(self,
                  data_root,
                  data_list,
-                 #evaluate_data_list_1,
-                 #evaluate_data_list_s,
+                 #evaluate_data_list,
                  pipeline,
                  test_mode=False,
                  test_suffix='png',
@@ -38,7 +37,7 @@ class once2dDataset(TuSimpleDataset):
         )
         #self.evaluate_data_list_1 = evaluate_data_list_1
         #self.evaluate_data_list_s = evaluate_data_list_s
-        #self.evaluate_data_list = self.evaluate_data_list_1
+        self.evaluate_data_list = data_list
     
     def set_all_scenes(self):
         pass
@@ -47,7 +46,7 @@ class once2dDataset(TuSimpleDataset):
     # 重载函数
     def parser_datalist(self, data_list):
         img_infos = []
-        print(data_list)
+        #print(data_list)
         for anno_list in data_list:
             with open(anno_list) as f:
                 lines = f.readlines()
@@ -59,7 +58,7 @@ class once2dDataset(TuSimpleDataset):
                     raw_anno_file = raw_file.replace('.jpg', '.json')
                     img_info.update(dict(anno_file=os.path.join('all_gt', raw_anno_file)))
                     img_infos.append(img_info)
-        print(img_info)
+        #print(img_info)
         return img_infos
 
     def _set_group_flag(self):
@@ -88,11 +87,12 @@ class once2dDataset(TuSimpleDataset):
             #     if len(coords) > 3:
             #         lanes.append(coords)
         for lane in lines['lanes']:
-            temp = []
+            coords = []
             for x, y in lane:
-                temp.append(x)
-                temp.append(y)
-            lanes.append(temp)
+                coords.append(float(x) + offset_x)
+                coords.append(float(y) + offset_y)
+            if len(coords) > 3:
+                lanes.append(coords)
         id_classes = [1 for i in range(len(lanes))]
         id_instances = [i + 1 for i in range(len(lanes))]
         return lanes, id_classes, id_instances

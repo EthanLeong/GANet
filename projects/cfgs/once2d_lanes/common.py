@@ -7,12 +7,12 @@ train_data_list = [data_root + '/list/train.txt']
 val_data_list = [data_root + '/list/val.txt'] # test_baseline
 test_data_list = [data_root + '/list/test.txt']
 num_lane_classes = 1
-max_lane_num = 20 # 这个只用于创建align的车道target(用于deform点的监督)
+max_lane_num = 30 # 这个只用于创建align的车道target(用于deform点的监督)
 img_norm_cfg = dict(
     mean=[75.3, 76.6, 77.6], std=[50.5, 53.8, 54.3], to_rgb=False)
 ori_scale = (1920, 1020)
 # Still not sure abot the crop_boxx
-crop_bbox = [0, 510, 1920, 1020]
+# crop_bbox = [0, 510, 1920, 1020]
 img_scale = (800, 320)
 
 optimizer = dict(type='Adam', lr=1e-3, betas=(0.9, 0.999), eps=1e-8) 
@@ -45,13 +45,13 @@ train_compose = dict(bboxes=False, keypoints=True, masks=False)
 
 train_al_pipeline = [
     dict(type='Compose', params=train_compose),
-    dict(
-        type='Crop',
-        x_min=crop_bbox[0],
-        x_max=crop_bbox[2],
-        y_min=crop_bbox[1],
-        y_max=crop_bbox[3],
-        p=1),
+    # dict(
+    #     type='Crop',
+    #     x_min=crop_bbox[0],
+    #     x_max=crop_bbox[2],
+    #     y_min=crop_bbox[1],
+    #     y_max=crop_bbox[3],
+    #     p=1),
     dict(type='HorizontalFlip', p=0.5),
     dict(type='Resize', height=img_scale[1], width=img_scale[0], p=1),
     dict(
@@ -99,12 +99,12 @@ train_al_pipeline = [
 
 val_al_pipeline = [
     dict(type='Compose', params=train_compose),
-    dict(
-        type='Crop',
-        x_min=crop_bbox[0],
-        x_max=crop_bbox[2],
-        y_min=crop_bbox[1],
-        y_max=crop_bbox[3],
-        p=1),
+    # dict(
+    #     type='Crop',
+    #     x_min=crop_bbox[0],
+    #     x_max=crop_bbox[2],
+    #     y_min=crop_bbox[1],
+    #     y_max=crop_bbox[3],
+    #     p=1),
     dict(type='Resize', height=img_scale[1], width=img_scale[0], p=1),
 ]
