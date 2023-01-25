@@ -24,6 +24,9 @@ In this paper, we propose a Global Association Network (GANet) to formulate the 
     python setup.py develop
     ```
 
+## Update by Ethan
+This is a Fork to implement the code to train the GANet using the [ONCE-3D Lane dataset](https://once-3dlanes.github.io/).
+
 ## Dataset
 [Prepare Dataset](dataset.md)
 
