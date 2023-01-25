@@ -25,13 +25,14 @@ lr_config = dict(
     min_lr=1e-5)
 
 workflow = [('train', 1000)] 
-runner = dict(type='EpochBasedRunner', max_epochs=300)
+runner = dict(type='EpochBasedRunner', max_epochs=150)
 dist_params = dict(backend='nccl')
 
 find_unused_parameters=True
 
 checkpoint_config = dict(interval=10)
-evaluation = dict(interval=10,save_best="test_F1",greater_keys=['test_F1'])
+#evaluation = dict(interval=1,save_best="test_F1",greater_keys=['test_F1'])
+evaluation = dict(interval=1,save_best="F1",greater_keys=['F1'])
 log_level = 'INFO'
 log_config = dict(
     interval=100,

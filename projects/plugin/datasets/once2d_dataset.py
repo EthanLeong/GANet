@@ -9,9 +9,12 @@ import datetime
 import time
 import threading
 import json
+from tqdm import tqdm
+import cv2
 
 from mmdet.datasets.builder import DATASETS
 from .tusimple_dataset import TuSimpleDataset
+from tools.ganet.curvelane.curvelane_evaluate import LaneMetricCore
 
 @DATASETS.register_module()
 class once2dDataset(TuSimpleDataset):
@@ -19,7 +22,6 @@ class once2dDataset(TuSimpleDataset):
     def __init__(self,
                  data_root,
                  data_list,
-                 #evaluate_data_list,
                  pipeline,
                  test_mode=False,
                  test_suffix='png',
@@ -35,13 +37,23 @@ class once2dDataset(TuSimpleDataset):
             work_dir,
             **kwargs
         )
-        #self.evaluate_data_list_1 = evaluate_data_list_1
-        #self.evaluate_data_list_s = evaluate_data_list_s
+        self.evaluator = LaneMetricCore(
+                eval_width=224,
+                eval_height=224,
+                iou_thresh=0.5,
+                lane_width=5
+            )
         self.evaluate_data_list = data_list
+    
+    def set_ori_shape(self, idx):
+        ori_filename = self.img_infos[idx]['raw_file']
+        filename = os.path.join(self.img_prefix, ori_filename)
+        img_tmp = cv2.imread(filename)
+        ori_shape = img_tmp.shape
+        self.img_infos[idx]['ori_shape']=ori_shape
     
     def set_all_scenes(self):
         pass
-        #self.evaluate_data_list = self.evaluate_data_list_s
 
     # 重载函数
     def parser_datalist(self, data_list):
@@ -76,16 +88,6 @@ class once2dDataset(TuSimpleDataset):
         with open(anno_file, 'r') as anno_f:
             #lines = anno_f.readlines() # [],会有空的
             lines = json.load(anno_f)
-            # for line in lines['lanes']:
-            #     coords = []
-            #     coords_str = line.strip().split(' ')
-            #     for i in range(len(coords_str) // 2):
-            #         coord_x = float(coords_str[2 * i]) + offset_x ## todo
-            #         coord_y = float(coords_str[2 * i + 1]) + offset_y
-            #         coords.append(coord_x)
-            #         coords.append(coord_y)
-            #     if len(coords) > 3:
-            #         lanes.append(coords)
         for lane in lines['lanes']:
             coords = []
             for x, y in lane:
@@ -103,7 +105,7 @@ class once2dDataset(TuSimpleDataset):
         for idx, output in enumerate(outputs):
             result, virtual_center, cluster_center = output['final_dict_list']
             culane_lanes = culane_convert_formal(result)
-            save_file = save_dir + '/' + output['img_metas']['ori_filename'].replace('.jpg', '.json')
+            save_file = save_dir + '/' + output['img_metas']['ori_filename'].replace('.jpg', '.lines.txt')
             mmcv.mkdir_or_exist(os.path.dirname(save_file))
             f_pr = open(save_file,'w')
             for lane in culane_lanes:
@@ -116,96 +118,32 @@ class once2dDataset(TuSimpleDataset):
         print(f"\nwriting culane results to {save_dir}")
         return save_dir
 
-    # def evaluate_p(self, outputs, **eval_kwargs):
-    #     pr_dir = self.format_results(outputs) if outputs else self.work_dir + '/format'
-    #     gt_dir = self.data_root
-    #     pr_dir = pr_dir+'/' if pr_dir[-1]!='/' else pr_dir
-    #     gt_dir = gt_dir+'/' if gt_dir[-1]!='/' else gt_dir
-    #     w_lane=30;
-    #     iou=0.5  # Set iou to 0.3 or 0.5
-    #     im_w=1640
-    #     im_h=590
-    #     frame=1
-    #     F1_pa = re.compile("Fmeasure: (.*)")
-    #     PR_pa = re.compile("precision: (.*)")
-    #     RE_pa = re.compile("recall: (.*)")
-    #     FP_pa = re.compile("fp: (\d*)")
-    #     FN_pa = re.compile("fn: (\d*)")
-    #     TP_pa = re.compile("tp: (\d*)")
-    #     metric_pa = {"F1":F1_pa,
-    #                 "precise":PR_pa,
-    #                 "recall":RE_pa,
-    #                 "FP":FP_pa,
-    #                 "FN":FN_pa,
-    #                 "TP":TP_pa,
-    #                 }
-    #     ret = {}
-    #     starttime = datetime.datetime.now()
-    #     for data_list in self.evaluate_data_list:
-    #         print(f"evaluating {data_list}...")
-    #         name = os.path.basename(data_list).split('.')[0].split('_')[-1]
-    #         p = subprocess.Popen(f"tools/ganet/culane/culane_evaluate/evaluate -a {gt_dir} -d {pr_dir} -i {gt_dir} -l {data_list} -w {w_lane} -t {iou} -c {im_w} -r {im_h} -f {frame}", stdout=subprocess.PIPE, shell=True)
-    #         p.wait()
-    #         output = p.stdout.read().decode('utf-8')
-    #         # print(output)
-    #         for k in metric_pa:
-    #             val = re.findall(metric_pa[k],output)[0]
-    #             ret[f"{name}_{k}"] = float(val)
-    #     endtime = datetime.datetime.now()
-    #     print(f"{(endtime-starttime).seconds}s elapse...")
-    #     if self.check_or_not: 
-    #         z_metric = self.check(pr_dir)
-    #         ret.update(**z_metric)
-    #     return ret
-
-
+    # Use the framework in curvelane_dataset.py to perform evaluation on the model
     def evaluate(self, outputs, **eval_kwargs):
+        self.evaluator.reset()
+        # format和culane完全一样
         pr_dir = self.format_results(outputs) if outputs else self.work_dir + '/format'
         gt_dir = self.data_root
-        print(f"pr:{pr_dir}\ngt:{gt_dir}")
-        pr_dir = pr_dir+'/' if pr_dir[-1]!='/' else pr_dir
-        gt_dir = gt_dir+'/' if gt_dir[-1]!='/' else gt_dir
-        ret = {}
-        starttime = datetime.datetime.now()
-        t_list = []
-        for data_list in self.evaluate_data_list:
-            t = threading.Thread(target=eval_one, args=(data_list,gt_dir,pr_dir,ret))
-            # t.setDaemon(True)
-            t.start()
-            t_list.append(t)
-        for t in t_list:
-            t.join()
-        endtime = datetime.datetime.now()
-        print(f"{(endtime-starttime).seconds}s elapse...")
+        for idx in tqdm(range(len(self.img_infos))):
+            raw_file = self.img_infos[idx]['raw_file']
+            pr_anno = os.path.join(pr_dir,raw_file) 
+            gt_anno = os.path.join(gt_dir,raw_file) 
+            pr = parse_anno(pr_anno)
+            gt = parse_anno_gt(gt_anno.replace('img', 'all_gt'))
+            if 'ori_shape' not in self.img_infos[idx]:
+                self.set_ori_shape(idx)
+            ori_shape = self.img_infos[idx]['ori_shape']
+            gt_wh = dict(height=ori_shape[0], width=ori_shape[1]) # (1440, 2560, 3)
+            predict_spec = dict(Lines=pr, Shape=gt_wh) # gt_wh：{'height': 1440, 'width': 2560}
+            target_spec = dict(Lines=gt, Shape=gt_wh)
+            self.evaluator(target_spec, predict_spec)
+
+        metric = self.evaluator.summary()
         if self.check_or_not: 
             z_metric = self.check(pr_dir)
-            ret.update(**z_metric)
-        return ret
+            metric.update(**z_metric)
+        return metric
 
-    def check(self, pr_dir):
-        znum = 0
-        znum_img = 0
-        demo = []
-        self.img_info = self.parser_datalist(self.evaluate_data_list) # 避免重新测试的时候没有img_info
-        for img_info in self.img_infos:
-            path = os.path.join(pr_dir,img_info['anno_file'])
-            annos = mmcv.list_from_file(path)
-            lanes = []
-            for anno in annos:
-                str_list = anno.split()
-                lanes.append([(float(str_list[2*i]),float(str_list[2*i+1])) for i in range(len(str_list)//2)])
-            ret = self.check_one_img(lanes)
-            if ret>0:
-                znum+=ret
-                znum_img+=1
-                demo.append(path)
-        ret_demo = demo if len(demo)>0 else ''
-        return dict(
-            znum = znum,
-            znum_img = znum_img,
-            demo = ret_demo,
-            z_ratio = znum_img / len(self.img_infos)
-        )
 
 def culane_convert_formal(lanes):
     res = []
@@ -222,7 +160,16 @@ def culane_convert_formal(lanes):
         res.append(lane_coords)
     return res
 
-def parse_anno(filename):
+def convert_coords_formal(lanes):
+    res = []
+    for lane in lanes:
+        lane_coords = []
+        for coord in lane:
+            lane_coords.append({'x': coord[0], 'y': coord[1]})
+        res.append(lane_coords)
+    return res
+
+def parse_anno(filename, formal=True):
     anno_dir = filename.replace('.jpg', '.lines.txt') 
     annos = []
     with open(anno_dir, 'r') as anno_f:
@@ -235,33 +182,22 @@ def parse_anno(filename):
         for i in range(len(coords_tmp) // 2):
             coords.append((coords_tmp[2 * i], coords_tmp[2 * i + 1]))
         annos.append(coords)
+    if formal: # true
+        annos = convert_coords_formal(annos)
     return annos
 
-def eval_one(data_list,gt_dir,pr_dir,ret):
-    F1_pa = re.compile("Fmeasure: (.*)")
-    PR_pa = re.compile("precision: (.*)")
-    RE_pa = re.compile("recall: (.*)")
-    FP_pa = re.compile("fp: (\d*)")
-    FN_pa = re.compile("fn: (\d*)")
-    TP_pa = re.compile("tp: (\d*)")
-    metric_pa = {"F1":F1_pa,
-                "precise":PR_pa,
-                "recall":RE_pa,
-                "FP":FP_pa,
-                "FN":FN_pa,
-                "TP":TP_pa,
-                }
-    w_lane=30;
-    iou=0.5  # Set iou to 0.3 or 0.5
-    im_w=1640
-    im_h=590
-    frame=1
-    print(f"evaluating {data_list}...")
-    name = os.path.basename(data_list).split('.')[0].split('_')[-1]
-    p = subprocess.Popen(f"tools/ganet/culane/culane_evaluate/evaluate -a {gt_dir} -d {pr_dir} -i {gt_dir} -l {data_list} -w {w_lane} -t {iou} -c {im_w} -r {im_h} -f {frame}", stdout=subprocess.PIPE, shell=True)
-    p.wait()
-    output = p.stdout.read().decode('utf-8')
-    # print(output)
-    for k in metric_pa:
-        val = re.findall(metric_pa[k],output)[0]
-        ret[f"{name}_{k}"] = float(val)
+def parse_anno_gt(filename, formal=True):
+    anno_dir = filename.replace('.jpg', '.json') 
+    annos = []
+    with open(anno_dir, 'r') as anno_f:
+            #lines = anno_f.readlines() # [],会有空的
+        lines = json.load(anno_f)
+    for lane in lines['lanes']:
+        coords = []
+        for x, y in lane:
+            coords.append((float(x), float(y)))
+        if len(coords) > 3:
+            annos.append(coords)
+    if formal: # true
+        annos = convert_coords_formal(annos)
+    return annos
